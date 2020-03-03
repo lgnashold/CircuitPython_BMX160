@@ -76,7 +76,7 @@ BMX160_FOC_CONF_ADDR       = const(0x69)
 BMX160_CONF_ADDR           = const(0x6A)
 
 BMX160_ACCEL_BW_NORMAL_AVG4 = const(0x02)
-BMX160_GYRO_BW_NORMAL_MODE  = const(0x02)
+BMX160_GYRO_BW_NORMAL_MODE  = const(0x28)
 
 BMX160_SELF_TEST_ADDR                = const(0x6D)
 # Self test configurations
@@ -115,16 +115,11 @@ BMX160_ACCEL_RANGE_4G                = const(0x05)
 BMX160_ACCEL_RANGE_8G                = const(0x08)
 BMX160_ACCEL_RANGE_16G               = const(0x0C)
 
-# BMX160_ACCEL_RANGE_CONSTANTS = [BMX160_ACCEL_RANGE_16G,
-#                                 BMX160_ACCEL_RANGE_8G,
-#                                 BMX160_ACCEL_RANGE_4G,
-#                                 BMX160_ACCEL_RANGE_2G]
-# BMX160_ACCEL_RANGE_VALUES = [16, 8, 4, 2]
-BMX160_ACCEL_RANGE_CONSTANTS = [BMX160_ACCEL_RANGE_2G,
-                                BMX160_ACCEL_RANGE_4G,
+BMX160_ACCEL_RANGE_CONSTANTS = [BMX160_ACCEL_RANGE_16G,
                                 BMX160_ACCEL_RANGE_8G,
-                                BMX160_ACCEL_RANGE_16G]
-BMX160_ACCEL_RANGE_VALUES = [2, 4, 8, 16]
+                                BMX160_ACCEL_RANGE_4G,
+                                BMX160_ACCEL_RANGE_2G]
+BMX160_ACCEL_RANGE_VALUES = [16, 8, 4, 2]
 
 
 # Gyro Range
@@ -236,7 +231,6 @@ BMX160_SPI_WR_MASK         = const(0x7F)
 
 # Error related
 BMX160_OK                  = const(0)
-BMX160_ERROR               = const(-1)
 
 # Each goes with a different sensitivity in decreasing order
 AccelSensitivity2Gravity_values = [2048, 4086, 8192, 16384]   # accelerometer sensitivity. See Section 1.2, Table 2
@@ -279,8 +273,6 @@ class BMX160:
     """
 
     # multiplicative constants
-
-    # NOTE THESE FIRST TWO GET SET IN THE INIT SEQUENCE
     ACC_SCALAR = 1/(AccelSensitivity2Gravity * g_TO_METERS_PER_SECOND_SQUARED) # 1 m/s^2 = 0.101971621 g
     GYR_SCALAR = 1/GyroSensitivity2DegPerSec_values[4]
     MAG_SCALAR = 1/16
@@ -366,10 +358,12 @@ class BMX160:
     # synonymous
     @property
     def error_status(self):
-        return format_binary(self._error_status)
+        # Bitwise AND ignores reserved bits
+        return format_binary(self._error_status & 0x5F)
+
     @property
     def query_error(self):
-        return format_binary(self._error_status)
+        return format_binary(self._error_status & 0x5F)
 
     ### ACTUAL API
     @property
@@ -408,7 +402,7 @@ class BMX160:
         # BW doesn't have an interface yet
         self._gyro_bwmode = BMX160_GYRO_BW_NORMAL_MODE
         # These rely on the setters to do their magic.
-        self.gyro_range = BMX160_GYRO_RANGE_500_DPS
+        self.gyro_range = 1000
         # self.GYR_SCALAR = 1
         # self.GYR_SCALAR = 1/GyroSensitivity2DegPerSec_values[1]
 
@@ -424,27 +418,17 @@ class BMX160:
         """
         The input is expected to be the BMX160-constant associated with the range.
 
-        deg/s | bmxconst value | bmxconst_name
-        ------------------------------------------------------
-        2000  |   0            |  BMX160_GYRO_RANGE_2000_DPS
-        1000  |   1            |  BMX160_GYRO_RANGE_1000_DPS
-        500   |   2            |  BMX160_GYRO_RANGE_500_DPS
-        250   |   3            |  BMX160_GYRO_RANGE_250_DPS
-        125   |   4            |  BMX160_GYRO_RANGE_125_DPS
-
-        ex: bmx.gyro_range = BMX160_GYRO_RANGE_500_DPS
-        equivalent to: bmx.gyro_range = 2
+        deg/s | bmxconst
+        ------------------
+        2000  |   0
+        1000  |   1
+        500   |   2
+        250   |   3
+        125   |   4
         """
-
-        if rangeconst in BMX160_GYRO_RANGE_CONSTANTS:
-            self._gyro_range = rangeconst
-            # read out the value to see if it changed successfully
-            rangeconst = self._gyro_range
-            val = BMX160_GYRO_RANGE_VALUES[rangeconst]
-            self.GYR_SCALAR = (val / 32768.0)
-        else:
-            pass
-
+        self._gyro_range = rangeconst:
+        if self._error_status == 0
+            self.GYR_SCALAR = 1 / GyroSensitivity2DegPerSec_values[rangeconst]
 
     @property
     def gyro_odr(self):
@@ -496,10 +480,10 @@ class BMX160:
 
     def init_accel(self):
         # BW doesn't have an interface yet
-        # self.write_u8(BMX160_ACCEL_CONFIG_ADDR, BMX160_ACCEL_BW_NORMAL_AVG4)
-        # self._accel_bwmode = BMX160_ACCEL_BW_NORMAL_AVG4
+        self.write_u8(BMX160_ACCEL_CONFIG_ADDR, BMX160_ACCEL_BW_NORMAL_AVG4)
+        self._accel_bwmode = BMX160_ACCEL_BW_NORMAL_AVG4
         # These rely on the setters to do their magic.
-        self.accel_range = BMX160_ACCEL_RANGE_8G
+        self.accel_range = 2
         self.accel_odr = 25
         self.accel_powermode = BMX160_ACCEL_NORMAL_MODE
 
@@ -512,27 +496,17 @@ class BMX160:
         """
         The input is expected to be the BMX160-constant associated with the range.
 
-        deg/s | bmxconst value | bmxconst name
-        ------------------------------------------------------
-        2     |   3            | BMX160_ACCEL_RANGE_2G
-        4     |   5            | BMX160_ACCEL_RANGE_4G
-        8     |   8            | BMX160_ACCEL_RANGE_8G
-        16    |   12           | BMX160_ACCEL_RANGE_16G
-
-        ex: bmx.accel_range = BMX160_ACCEL_RANGE_4G
-        equivalent to: bmx.accel_range = 5
+        deg/s | bmxconst
+        ------------------
+        2000  |   0
+        1000  |   1
+        500   |   2
+        250   |   3
+        125   |   4
         """
-
-        if rangeconst in BMX160_ACCEL_RANGE_CONSTANTS:
-            self._accel_range = rangeconst
-            # read out the value to see if it changed successfully
-            rangeconst = self._accel_range
-            # convert to 0-3 range for indexing
-            ind = rangeconst >> 2
-            val = BMX160_ACCEL_RANGE_VALUES[ind]
-            self.ACC_SCALAR = (val / 32768.0) / g_TO_METERS_PER_SECOND_SQUARED
-        else:
-            pass
+        self._accel_range = rangeconst
+        if self._error_status == 0:
+            self.ACC_SCALAR = 1 / (AccelSensitivity2Gravity_values[rangeconst] * * g_TO_METERS_PER_SECOND_SQUARED)
 
     @property
     def accel_odr(self):
@@ -608,8 +582,12 @@ class BMX160:
         rounded = possible_values[i]
         bmxconst = bmx_constants[i]
         self.write_u8(config_addr, bmxconst)
+<<<<<<< HEAD
+        e = int(self.query_error)
+=======
         e = self.error_code
 
+>>>>>>> c8c13a9... use RWBits for range as well
         if e == BMX160_OK:
             return (i, rounded)
         else:
